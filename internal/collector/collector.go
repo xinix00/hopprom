@@ -1,0 +1,368 @@
+package collector
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+)
+
+const (
+	agentHealthyThreshold = 60 * time.Second // agent is healthy if seen in last 60s
+	httpTimeout          = 5 * time.Second
+)
+
+// Collector polls easyrun API and calculates metrics
+type Collector struct {
+	agentURL string
+	client   *http.Client
+
+	mu             sync.RWMutex
+	metrics        *Metrics
+	lastTaskStates map[string]string // taskID -> state (for detecting transitions)
+}
+
+// New creates a new collector
+func New(agentURL string) *Collector {
+	return &Collector{
+		agentURL:       agentURL,
+		client:         &http.Client{Timeout: httpTimeout},
+		lastTaskStates: make(map[string]string),
+		metrics: &Metrics{
+			TasksByState:      make(map[string]int),
+			TasksByJob:        make(map[string]int),
+			TaskRestartsByJob: make(map[string]int),
+			JobInstances:      make(map[string]*JobMetric),
+			TaskStartsTotal:   make(map[string]int),
+			TaskFailuresTotal: make(map[string]int),
+			TaskRestartsTotal: make(map[string]int),
+			AgentLastSeen:     make(map[string]time.Time),
+			AgentCapacity:     make(map[string]*CapacityResponse),
+			AgentCPUUsed:      make(map[string]float64),
+			AgentMemoryUsed:   make(map[string]uint64),
+		},
+	}
+}
+
+// Collect fetches data from easyrun and calculates metrics
+func (c *Collector) Collect() error {
+	// Fetch data from APIs
+	agents, err := c.fetchAgents()
+	if err != nil {
+		return fmt.Errorf("failed to fetch agents: %w", err)
+	}
+
+	jobs, err := c.fetchJobs()
+	if err != nil {
+		return fmt.Errorf("failed to fetch jobs: %w", err)
+	}
+
+	status, err := c.fetchStatus()
+	if err != nil {
+		return fmt.Errorf("failed to fetch status: %w", err)
+	}
+
+	// Fetch capacity for each agent (async)
+	c.fetchAgentCapacities(agents)
+
+	// Calculate metrics
+	c.calculateMetrics(agents, jobs, status)
+
+	return nil
+}
+
+// GetMetrics returns a copy of current metrics (thread-safe)
+func (c *Collector) GetMetrics() *Metrics {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Return a copy to avoid race conditions
+	m := &Metrics{
+		AgentsTotal:        c.metrics.AgentsTotal,
+		AgentsHealthy:      c.metrics.AgentsHealthy,
+		JobsTotal:          c.metrics.JobsTotal,
+		TasksByState:       make(map[string]int),
+		TasksByJob:         make(map[string]int),
+		TaskRestartsByJob:  make(map[string]int),
+		JobInstances:       make(map[string]*JobMetric),
+		TaskStartsTotal:    make(map[string]int),
+		TaskFailuresTotal:  make(map[string]int),
+		TaskRestartsTotal:  make(map[string]int),
+		AgentLastSeen:      make(map[string]time.Time),
+		AgentCapacity:      make(map[string]*CapacityResponse),
+		AgentCPUUsed:       make(map[string]float64),
+		AgentMemoryUsed:    make(map[string]uint64),
+	}
+
+	for k, v := range c.metrics.TasksByState {
+		m.TasksByState[k] = v
+	}
+	for k, v := range c.metrics.TasksByJob {
+		m.TasksByJob[k] = v
+	}
+	for k, v := range c.metrics.TaskRestartsByJob {
+		m.TaskRestartsByJob[k] = v
+	}
+	for k, v := range c.metrics.JobInstances {
+		m.JobInstances[k] = &JobMetric{
+			Running:  v.Running,
+			Expected: v.Expected,
+			Healthy:  v.Healthy,
+		}
+	}
+	for k, v := range c.metrics.TaskStartsTotal {
+		m.TaskStartsTotal[k] = v
+	}
+	for k, v := range c.metrics.TaskFailuresTotal {
+		m.TaskFailuresTotal[k] = v
+	}
+	for k, v := range c.metrics.TaskRestartsTotal {
+		m.TaskRestartsTotal[k] = v
+	}
+	for k, v := range c.metrics.AgentLastSeen {
+		m.AgentLastSeen[k] = v
+	}
+	for k, v := range c.metrics.AgentCapacity {
+		m.AgentCapacity[k] = v
+	}
+	for k, v := range c.metrics.AgentCPUUsed {
+		m.AgentCPUUsed[k] = v
+	}
+	for k, v := range c.metrics.AgentMemoryUsed {
+		m.AgentMemoryUsed[k] = v
+	}
+
+	return m
+}
+
+func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *StatusResponse) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Reset gauges (counters are never reset)
+	c.metrics.TasksByState = make(map[string]int)
+	c.metrics.TasksByJob = make(map[string]int)
+	c.metrics.TaskRestartsByJob = make(map[string]int)
+	c.metrics.JobInstances = make(map[string]*JobMetric)
+	c.metrics.AgentCPUUsed = make(map[string]float64)
+	c.metrics.AgentMemoryUsed = make(map[string]uint64)
+
+	// Agent metrics
+	c.metrics.AgentsTotal = len(agents)
+	c.metrics.AgentsHealthy = 0
+	for _, agent := range agents {
+		c.metrics.AgentLastSeen[agent.ID] = agent.LastSeen
+		if time.Since(agent.LastSeen) < agentHealthyThreshold {
+			c.metrics.AgentsHealthy++
+		}
+	}
+
+	// Build job lookup
+	jobMap := make(map[string]*Job)
+	for _, job := range jobs {
+		jobMap[job.ID] = job
+	}
+
+	// Task metrics
+	for agentID, tasks := range status.TasksByAgent {
+		var cpuUsed float64
+		var memUsed uint64
+
+		for _, task := range tasks {
+			// Count by state
+			c.metrics.TasksByState[task.State]++
+
+			// Count by job
+			if task.State == "running" {
+				c.metrics.TasksByJob[task.JobName]++
+
+				// Calculate resource usage
+				if job := jobMap[task.JobID]; job != nil {
+					cpuUsed += float64(job.CPUShares) / 1024.0 // convert shares to cores
+					memUsed += job.MemoryLimit
+				}
+			}
+
+			// Count restarts
+			if task.RestartCount > 0 {
+				c.metrics.TaskRestartsByJob[task.JobName] += task.RestartCount
+			}
+
+			// Detect state transitions for counters
+			oldState := c.lastTaskStates[task.ID]
+			if oldState != task.State {
+				// New task or state changed
+				if oldState == "" {
+					// New task started
+					c.metrics.TaskStartsTotal[task.JobName]++
+				} else if task.State == "failed" {
+					// Task failed
+					c.metrics.TaskFailuresTotal[task.JobName]++
+				}
+
+				// Track restarts (monotonic counter)
+				if task.RestartCount > 0 {
+					prevCount := 0
+					if prevTask, ok := c.lastTaskStates[task.ID]; ok && prevTask == "running" {
+						// Increment restart counter if restartCount increased
+						c.metrics.TaskRestartsTotal[task.JobName]++
+					} else {
+						prevCount = task.RestartCount
+					}
+					_ = prevCount
+				}
+
+				c.lastTaskStates[task.ID] = task.State
+			}
+		}
+
+		c.metrics.AgentCPUUsed[agentID] = cpuUsed
+		c.metrics.AgentMemoryUsed[agentID] = memUsed
+	}
+
+	// Job metrics
+	c.metrics.JobsTotal = len(jobs)
+	for _, job := range jobs {
+		running := c.metrics.TasksByJob[job.Name]
+		expected := job.Count
+		if expected == -1 {
+			expected = len(agents)
+		} else if expected == 0 {
+			expected = 1
+		}
+
+		c.metrics.JobInstances[job.Name] = &JobMetric{
+			Running:  running,
+			Expected: expected,
+			Healthy:  running >= expected,
+		}
+	}
+}
+
+func (c *Collector) fetchAgents() ([]*Agent, error) {
+	url := c.agentURL + "/v1/agents"
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var agents []*Agent
+	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+		return nil, err
+	}
+
+	return agents, nil
+}
+
+func (c *Collector) fetchJobs() ([]*Job, error) {
+	url := c.agentURL + "/v1/jobs"
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var jobs []*Job
+	if err := json.NewDecoder(resp.Body).Decode(&jobs); err != nil {
+		return nil, err
+	}
+
+	return jobs, nil
+}
+
+func (c *Collector) fetchStatus() (*StatusResponse, error) {
+	url := c.agentURL + "/v1/status"
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var status StatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return nil, err
+	}
+
+	return &status, nil
+}
+
+func (c *Collector) fetchAgentCapacities(agents []*Agent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, agent := range agents {
+		// Skip if we already have it cached
+		if _, ok := c.metrics.AgentCapacity[agent.ID]; ok {
+			continue
+		}
+
+		// Fetch asynchronously
+		go func(a *Agent) {
+			cap, err := c.fetchAgentCapacity(a.Endpoint)
+			if err != nil {
+				log.Printf("Failed to fetch capacity for %s: %v", a.ID, err)
+				return
+			}
+
+			c.mu.Lock()
+			c.metrics.AgentCapacity[a.ID] = cap
+			c.mu.Unlock()
+		}(agent)
+	}
+}
+
+func (c *Collector) fetchAgentCapacity(endpoint string) (*CapacityResponse, error) {
+	url := endpoint + "/capacity"
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var cap CapacityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cap); err != nil {
+		return nil, err
+	}
+
+	return &cap, nil
+}
