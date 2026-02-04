@@ -163,7 +163,7 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 	// Build job lookup
 	jobMap := make(map[string]*Job)
 	for _, job := range jobs {
-		jobMap[job.ID] = job
+		jobMap[job.Name] = job
 	}
 
 	// Task metrics
@@ -180,7 +180,7 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 				c.metrics.TasksByJob[task.JobName]++
 
 				// Calculate resource usage
-				if job := jobMap[task.JobID]; job != nil {
+				if job := jobMap[task.JobName]; job != nil {
 					cpuUsed += float64(job.CPUShares) / 1024.0 // convert shares to cores
 					memUsed += job.MemoryLimit
 				}

@@ -126,19 +126,21 @@ groups:
 
 ## Deploy with EasyRun
 
-Run easyprom on all agents using `count: -1`:
+Run easyprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
 
 ```json
 {
   "name": "easyprom",
   "command": "/usr/local/bin/easyprom -listen :9090 -agent http://127.0.0.1:8080",
-  "count": -1,
+  "count": 1,
   "ports": {"metrics": 9090},
   "tags": {
     "urlprefix": "urlprefix:metrics.*"
   }
 }
 ```
+
+**Why count=1?** Agent proxies `/v1/*` requests to leader, so one instance gets cluster-wide data. If node fails, easyrun reschedules automatically.
 
 ## Architecture
 

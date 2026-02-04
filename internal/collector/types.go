@@ -22,7 +22,6 @@ type Job struct {
 
 type Task struct {
 	ID           string    `json:"id"`
-	JobID        string    `json:"job_id"`
 	JobName      string    `json:"job_name"`
 	State        string    `json:"state"` // "running", "failed", "stopped"
 	Pid          int       `json:"pid"`
