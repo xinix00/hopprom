@@ -167,10 +167,7 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 	}
 
 	// Task metrics
-	for agentID, tasks := range status.TasksByAgent {
-		var cpuUsed float64
-		var memUsed uint64
-
+	for _, tasks := range status.TasksByAgent {
 		for _, task := range tasks {
 			// Count by state
 			c.metrics.TasksByState[task.State]++
@@ -178,12 +175,6 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 			// Count by job
 			if task.State == "running" {
 				c.metrics.TasksByJob[task.JobName]++
-
-				// Calculate resource usage
-				if job := jobMap[task.JobName]; job != nil {
-					cpuUsed += float64(job.CPUShares) / 1024.0 // convert shares to cores
-					memUsed += job.MemoryLimit
-				}
 			}
 
 			// Count restarts
@@ -205,22 +196,20 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 
 				// Track restarts (monotonic counter)
 				if task.RestartCount > 0 {
-					prevCount := 0
 					if prevTask, ok := c.lastTaskStates[task.ID]; ok && prevTask == "running" {
-						// Increment restart counter if restartCount increased
 						c.metrics.TaskRestartsTotal[task.JobName]++
-					} else {
-						prevCount = task.RestartCount
 					}
-					_ = prevCount
 				}
 
 				c.lastTaskStates[task.ID] = task.State
 			}
 		}
+	}
 
-		c.metrics.AgentCPUUsed[agentID] = cpuUsed
-		c.metrics.AgentMemoryUsed[agentID] = memUsed
+	// Agent resource usage: use agent-reported capacity (accurate, even after recovery)
+	for agentID, cap := range c.metrics.AgentCapacity {
+		c.metrics.AgentCPUUsed[agentID] = float64(cap.CPUUsedShares) / 1024.0
+		c.metrics.AgentMemoryUsed[agentID] = cap.MemoryUsedBytes
 	}
 
 	// Job metrics
@@ -318,27 +307,33 @@ func (c *Collector) fetchStatus() (*StatusResponse, error) {
 }
 
 func (c *Collector) fetchAgentCapacities(agents []*Agent) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	type result struct {
+		id  string
+		cap *CapacityResponse
+	}
+	ch := make(chan result, len(agents))
 
+	// Fetch all agents in parallel (always refresh — capacity includes live usage)
 	for _, agent := range agents {
-		// Skip if we already have it cached
-		if _, ok := c.metrics.AgentCapacity[agent.ID]; ok {
-			continue
-		}
-
-		// Fetch asynchronously
 		go func(a *Agent) {
 			cap, err := c.fetchAgentCapacity(a.Endpoint)
 			if err != nil {
 				log.Printf("Failed to fetch capacity for %s: %v", a.ID, err)
+				ch <- result{a.ID, nil}
 				return
 			}
-
-			c.mu.Lock()
-			c.metrics.AgentCapacity[a.ID] = cap
-			c.mu.Unlock()
+			ch <- result{a.ID, cap}
 		}(agent)
+	}
+
+	// Collect all results
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for range agents {
+		r := <-ch
+		if r.cap != nil {
+			c.metrics.AgentCapacity[r.id] = r.cap
+		}
 	}
 }
 

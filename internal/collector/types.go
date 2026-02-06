@@ -37,8 +37,11 @@ type StatusResponse struct {
 }
 
 type CapacityResponse struct {
-	CPUCores    int    `json:"cpu_cores"`
-	MemoryBytes uint64 `json:"memory_bytes"`
+	CPUCores        int    `json:"cpu_cores"`
+	MemoryBytes     uint64 `json:"memory_bytes"`
+	CPUUsedShares   int    `json:"cpu_used_shares"`
+	MemoryUsedBytes uint64 `json:"memory_used_bytes"`
+	TasksRunning    int    `json:"tasks_running"`
 }
 
 // Metrics holds calculated Prometheus metrics
