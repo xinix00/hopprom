@@ -60,16 +60,14 @@ func (c *Collector) Collect() error {
 		return fmt.Errorf("failed to fetch jobs: %w", err)
 	}
 
-	status, err := c.fetchStatus()
-	if err != nil {
-		return fmt.Errorf("failed to fetch status: %w", err)
-	}
+	// Fetch task details per job (parallel, each only queries relevant agents)
+	tasksByAgent := c.fetchAllJobTasks(jobs)
 
 	// Fetch capacity for each agent (async)
 	c.fetchAgentCapacities(agents)
 
 	// Calculate metrics
-	c.calculateMetrics(agents, jobs, status)
+	c.calculateMetrics(agents, jobs, tasksByAgent)
 
 	return nil
 }
@@ -138,7 +136,7 @@ func (c *Collector) GetMetrics() *Metrics {
 	return m
 }
 
-func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *StatusResponse) {
+func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, tasksByAgent map[string][]*Task) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -167,7 +165,7 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, status *Statu
 	}
 
 	// Task metrics
-	for _, tasks := range status.TasksByAgent {
+	for _, tasks := range tasksByAgent {
 		for _, task := range tasks {
 			// Count by state
 			c.metrics.TasksByState[task.State]++
@@ -281,8 +279,44 @@ func (c *Collector) fetchJobs() ([]*Job, error) {
 	return jobs, nil
 }
 
-func (c *Collector) fetchStatus() (*StatusResponse, error) {
-	url := c.agentURL + "/v1/status"
+// fetchAllJobTasks fetches task details for each job in parallel via per-job status.
+// Each per-job query only contacts agents that have that job placed — much cheaper
+// than the old GetClusterStatus which contacted ALL agents.
+func (c *Collector) fetchAllJobTasks(jobs []*Job) map[string][]*Task {
+	result := make(map[string][]*Task)
+	if len(jobs) == 0 {
+		return result
+	}
+
+	type jobResult struct {
+		tasks map[string][]*Task
+	}
+	ch := make(chan jobResult, len(jobs))
+
+	for _, job := range jobs {
+		go func(j *Job) {
+			tasks, err := c.fetchJobStatus(j.Name)
+			if err != nil {
+				log.Printf("Failed to fetch status for job %s: %v", j.Name, err)
+				ch <- jobResult{}
+				return
+			}
+			ch <- jobResult{tasks: tasks}
+		}(job)
+	}
+
+	for range jobs {
+		r := <-ch
+		for agentID, tasks := range r.tasks {
+			result[agentID] = append(result[agentID], tasks...)
+		}
+	}
+
+	return result
+}
+
+func (c *Collector) fetchJobStatus(jobName string) (map[string][]*Task, error) {
+	url := fmt.Sprintf("%s/v1/jobs/%s/status", c.agentURL, jobName)
 	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -298,12 +332,12 @@ func (c *Collector) fetchStatus() (*StatusResponse, error) {
 		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	var status StatusResponse
+	var status JobStatusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		return nil, err
 	}
 
-	return &status, nil
+	return status.TasksByAgent, nil
 }
 
 func (c *Collector) fetchAgentCapacities(agents []*Agent) {

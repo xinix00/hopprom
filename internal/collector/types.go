@@ -30,10 +30,14 @@ type Task struct {
 }
 
 type StatusResponse struct {
-	Agents       int                  `json:"agents"`
-	TotalTasks   int                  `json:"total_tasks"`
-	RunningTasks int                  `json:"running_tasks"`
-	TasksByAgent map[string][]*Task   `json:"tasks_by_agent"`
+	Agents      int            `json:"agents"`
+	Jobs        int            `json:"jobs"`
+	TotalPlaced int            `json:"total_placed"`
+	Placed      map[string]int `json:"placed"` // jobName -> count
+}
+
+type JobStatusResponse struct {
+	TasksByAgent map[string][]*Task `json:"tasks_by_agent"`
 }
 
 type CapacityResponse struct {
