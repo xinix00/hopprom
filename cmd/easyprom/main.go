@@ -25,6 +25,7 @@ func main() {
 		listen       = flag.String("listen", ":9090", "Listen address for /metrics endpoint")
 		agent        = flag.String("agent", "http://127.0.0.1:8080", "EasyRun agent URL")
 		pollInterval = flag.Duration("interval", defaultPollInterval, "Poll interval for collecting metrics")
+		apiKey       = flag.String("api-key", "", "API key for easyrun agent authentication")
 	)
 	flag.Parse()
 
@@ -35,7 +36,7 @@ func main() {
 	log.Printf("Metrics endpoint: http://%s/metrics", *listen)
 
 	// Create collector
-	col := collector.New(*agent)
+	col := collector.New(*agent, *apiKey)
 
 	// Initial collection
 	if err := col.Collect(); err != nil {

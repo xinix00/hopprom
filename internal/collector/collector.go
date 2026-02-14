@@ -19,6 +19,7 @@ const (
 type Collector struct {
 	agentURL string
 	client   *http.Client
+	apiKey   string
 
 	mu             sync.RWMutex
 	metrics        *Metrics
@@ -26,10 +27,11 @@ type Collector struct {
 }
 
 // New creates a new collector
-func New(agentURL string) *Collector {
+func New(agentURL string, apiKey string) *Collector {
 	return &Collector{
 		agentURL:       agentURL,
 		client:         &http.Client{Timeout: httpTimeout},
+		apiKey:         apiKey,
 		lastTaskStates: make(map[string]string),
 		metrics: &Metrics{
 			TasksByState:      make(map[string]int),
@@ -229,9 +231,20 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, tasksByAgent 
 	}
 }
 
-func (c *Collector) fetchAgents() ([]*Agent, error) {
-	url := c.agentURL + "/v1/agents"
+// newRequest creates a GET request with API key authentication
+func (c *Collector) newRequest(url string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	return req, nil
+}
+
+func (c *Collector) fetchAgents() ([]*Agent, error) {
+	req, err := c.newRequest(c.agentURL + "/v1/agents")
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +268,7 @@ func (c *Collector) fetchAgents() ([]*Agent, error) {
 }
 
 func (c *Collector) fetchJobs() ([]*Job, error) {
-	url := c.agentURL + "/v1/jobs"
-	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	req, err := c.newRequest(c.agentURL + "/v1/jobs")
 	if err != nil {
 		return nil, err
 	}
@@ -316,8 +328,7 @@ func (c *Collector) fetchAllJobTasks(jobs []*Job) map[string][]*Task {
 }
 
 func (c *Collector) fetchJobStatus(jobName string) (map[string][]*Task, error) {
-	url := fmt.Sprintf("%s/v1/jobs/%s/status", c.agentURL, jobName)
-	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	req, err := c.newRequest(fmt.Sprintf("%s/v1/jobs/%s/status", c.agentURL, jobName))
 	if err != nil {
 		return nil, err
 	}
@@ -372,8 +383,7 @@ func (c *Collector) fetchAgentCapacities(agents []*Agent) {
 }
 
 func (c *Collector) fetchAgentCapacity(endpoint string) (*CapacityResponse, error) {
-	url := endpoint + "/capacity"
-	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	req, err := c.newRequest(endpoint + "/capacity")
 	if err != nil {
 		return nil, err
 	}
