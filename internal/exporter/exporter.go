@@ -140,6 +140,22 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(&b, "easyrun_job_healthy{job=%q} %d\n", job, health)
 		}
 		b.WriteString("\n")
+
+		b.WriteString("# HELP easyrun_job_cpu_percent Average CPU usage percent per job (relative to allocation)\n")
+		b.WriteString("# TYPE easyrun_job_cpu_percent gauge\n")
+		for _, job := range jobs {
+			m := metrics.JobInstances[job]
+			fmt.Fprintf(&b, "easyrun_job_cpu_percent{job=%q} %.1f\n", job, m.CPUPercent)
+		}
+		b.WriteString("\n")
+
+		b.WriteString("# HELP easyrun_job_mem_percent Average memory usage percent per job (relative to allocation)\n")
+		b.WriteString("# TYPE easyrun_job_mem_percent gauge\n")
+		for _, job := range jobs {
+			m := metrics.JobInstances[job]
+			fmt.Fprintf(&b, "easyrun_job_mem_percent{job=%q} %.1f\n", job, m.MemPercent)
+		}
+		b.WriteString("\n")
 	}
 
 	// Counters (monotonic)

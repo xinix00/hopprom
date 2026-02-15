@@ -27,6 +27,8 @@ type Task struct {
 	Pid          int       `json:"pid"`
 	RestartCount int       `json:"restart_count"`
 	StartedAt    time.Time `json:"started_at"`
+	CPUPercent   float64   `json:"cpu_percent"`
+	MemPercent   float64   `json:"mem_percent"`
 }
 
 type StatusResponse struct {
@@ -76,7 +78,9 @@ type Metrics struct {
 }
 
 type JobMetric struct {
-	Running  int
-	Expected int
-	Healthy  bool
+	Running    int
+	Expected   int
+	Healthy    bool
+	CPUPercent float64 // avg CPU% across running tasks
+	MemPercent float64 // avg Mem% across running tasks
 }

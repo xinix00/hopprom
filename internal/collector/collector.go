@@ -108,9 +108,11 @@ func (c *Collector) GetMetrics() *Metrics {
 	}
 	for k, v := range c.metrics.JobInstances {
 		m.JobInstances[k] = &JobMetric{
-			Running:  v.Running,
-			Expected: v.Expected,
-			Healthy:  v.Healthy,
+			Running:    v.Running,
+			Expected:   v.Expected,
+			Healthy:    v.Healthy,
+			CPUPercent: v.CPUPercent,
+			MemPercent: v.MemPercent,
 		}
 	}
 	for k, v := range c.metrics.TaskStartsTotal {
@@ -167,14 +169,21 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, tasksByAgent 
 	}
 
 	// Task metrics
+	jobCPUSum := make(map[string]float64)  // jobName -> sum of CPU%
+	jobMemSum := make(map[string]float64)  // jobName -> sum of Mem%
+	jobRunCount := make(map[string]int)    // jobName -> running task count (for avg)
+
 	for _, tasks := range tasksByAgent {
 		for _, task := range tasks {
 			// Count by state
 			c.metrics.TasksByState[task.State]++
 
-			// Count by job
+			// Count by job + accumulate resource usage
 			if task.State == "running" {
 				c.metrics.TasksByJob[task.JobName]++
+				jobCPUSum[task.JobName] += task.CPUPercent
+				jobMemSum[task.JobName] += task.MemPercent
+				jobRunCount[task.JobName]++
 			}
 
 			// Count restarts
@@ -223,10 +232,18 @@ func (c *Collector) calculateMetrics(agents []*Agent, jobs []*Job, tasksByAgent 
 			expected = 1
 		}
 
+		var avgCPU, avgMem float64
+		if cnt := jobRunCount[job.Name]; cnt > 0 {
+			avgCPU = jobCPUSum[job.Name] / float64(cnt)
+			avgMem = jobMemSum[job.Name] / float64(cnt)
+		}
+
 		c.metrics.JobInstances[job.Name] = &JobMetric{
-			Running:  running,
-			Expected: expected,
-			Healthy:  running >= expected,
+			Running:    running,
+			Expected:   expected,
+			Healthy:    running >= expected,
+			CPUPercent: avgCPU,
+			MemPercent: avgMem,
 		}
 	}
 }
