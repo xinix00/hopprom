@@ -21,188 +21,145 @@ func New(c *collector.Collector) *Exporter {
 	}
 }
 
+// metric writes a single Prometheus metric line
+func metric(b *strings.Builder, name, help, mtype string) {
+	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, mtype)
+}
+
+// sortedKeys returns sorted keys from a map
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // ServeHTTP handles /metrics requests
 func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	metrics := e.collector.GetMetrics()
-
+	m := e.collector.GetMetrics()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 
 	var b strings.Builder
 
 	// Agent metrics
-	b.WriteString("# HELP easyrun_agents_total Total number of registered agents\n")
-	b.WriteString("# TYPE easyrun_agents_total gauge\n")
-	fmt.Fprintf(&b, "easyrun_agents_total %d\n", metrics.AgentsTotal)
-	b.WriteString("\n")
+	metric(&b, "easyrun_agents_total", "Total number of registered agents", "gauge")
+	fmt.Fprintf(&b, "easyrun_agents_total %d\n\n", m.AgentsTotal)
 
-	b.WriteString("# HELP easyrun_agents_healthy Number of healthy agents (seen in last 60s)\n")
-	b.WriteString("# TYPE easyrun_agents_healthy gauge\n")
-	fmt.Fprintf(&b, "easyrun_agents_healthy %d\n", metrics.AgentsHealthy)
-	b.WriteString("\n")
+	metric(&b, "easyrun_agents_healthy", "Number of healthy agents (seen in last 60s)", "gauge")
+	fmt.Fprintf(&b, "easyrun_agents_healthy %d\n\n", m.AgentsHealthy)
 
 	// Agent capacity metrics
-	if len(metrics.AgentCapacity) > 0 {
-		b.WriteString("# HELP easyrun_agent_cpu_cores Total CPU cores per agent\n")
-		b.WriteString("# TYPE easyrun_agent_cpu_cores gauge\n")
-		for agentID, cap := range metrics.AgentCapacity {
-			fmt.Fprintf(&b, "easyrun_agent_cpu_cores{agent=%q} %d\n", agentID, cap.CPUCores)
+	if len(m.AgentCapacity) > 0 {
+		metric(&b, "easyrun_agent_cpu_cores", "Total CPU cores per agent", "gauge")
+		for id, cap := range m.AgentCapacity {
+			fmt.Fprintf(&b, "easyrun_agent_cpu_cores{agent=%q} %d\n", id, cap.CPUCores)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_agent_cpu_used_cores Used CPU cores per agent\n")
-		b.WriteString("# TYPE easyrun_agent_cpu_used_cores gauge\n")
-		for agentID, used := range metrics.AgentCPUUsed {
-			fmt.Fprintf(&b, "easyrun_agent_cpu_used_cores{agent=%q} %.2f\n", agentID, used)
+		metric(&b, "easyrun_agent_cpu_used_cores", "Used CPU cores per agent", "gauge")
+		for id, used := range m.AgentCPUUsed {
+			fmt.Fprintf(&b, "easyrun_agent_cpu_used_cores{agent=%q} %.2f\n", id, used)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_agent_memory_bytes Total memory bytes per agent\n")
-		b.WriteString("# TYPE easyrun_agent_memory_bytes gauge\n")
-		for agentID, cap := range metrics.AgentCapacity {
-			fmt.Fprintf(&b, "easyrun_agent_memory_bytes{agent=%q} %d\n", agentID, cap.MemoryBytes)
+		metric(&b, "easyrun_agent_memory_bytes", "Total memory bytes per agent", "gauge")
+		for id, cap := range m.AgentCapacity {
+			fmt.Fprintf(&b, "easyrun_agent_memory_bytes{agent=%q} %d\n", id, cap.MemoryBytes)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_agent_memory_used_bytes Used memory bytes per agent\n")
-		b.WriteString("# TYPE easyrun_agent_memory_used_bytes gauge\n")
-		for agentID, used := range metrics.AgentMemoryUsed {
-			fmt.Fprintf(&b, "easyrun_agent_memory_used_bytes{agent=%q} %d\n", agentID, used)
+		metric(&b, "easyrun_agent_memory_used_bytes", "Used memory bytes per agent", "gauge")
+		for id, used := range m.AgentMemoryUsed {
+			fmt.Fprintf(&b, "easyrun_agent_memory_used_bytes{agent=%q} %d\n", id, used)
 		}
 		b.WriteString("\n")
 	}
 
 	// Task metrics by state
-	b.WriteString("# HELP easyrun_tasks_total Number of tasks by state\n")
-	b.WriteString("# TYPE easyrun_tasks_total gauge\n")
-	for state, count := range metrics.TasksByState {
+	metric(&b, "easyrun_tasks_total", "Number of tasks by state", "gauge")
+	for state, count := range m.TasksByState {
 		fmt.Fprintf(&b, "easyrun_tasks_total{state=%q} %d\n", state, count)
 	}
 	b.WriteString("\n")
 
 	// Task metrics by job
-	if len(metrics.TasksByJob) > 0 {
-		b.WriteString("# HELP easyrun_tasks_running Number of running tasks per job\n")
-		b.WriteString("# TYPE easyrun_tasks_running gauge\n")
-		for job, count := range metrics.TasksByJob {
+	if len(m.TasksByJob) > 0 {
+		metric(&b, "easyrun_tasks_running", "Number of running tasks per job", "gauge")
+		for job, count := range m.TasksByJob {
 			fmt.Fprintf(&b, "easyrun_tasks_running{job=%q} %d\n", job, count)
 		}
 		b.WriteString("\n")
 	}
 
 	// Task restart metrics
-	if len(metrics.TaskRestartsByJob) > 0 {
-		b.WriteString("# HELP easyrun_task_restarts Current restart count per job\n")
-		b.WriteString("# TYPE easyrun_task_restarts gauge\n")
-		for job, count := range metrics.TaskRestartsByJob {
+	if len(m.TaskRestartsByJob) > 0 {
+		metric(&b, "easyrun_task_restarts", "Current restart count per job", "gauge")
+		for job, count := range m.TaskRestartsByJob {
 			fmt.Fprintf(&b, "easyrun_task_restarts{job=%q} %d\n", job, count)
 		}
 		b.WriteString("\n")
 	}
 
 	// Job metrics
-	b.WriteString("# HELP easyrun_jobs_total Total number of jobs\n")
-	b.WriteString("# TYPE easyrun_jobs_total gauge\n")
-	fmt.Fprintf(&b, "easyrun_jobs_total %d\n", metrics.JobsTotal)
-	b.WriteString("\n")
+	metric(&b, "easyrun_jobs_total", "Total number of jobs", "gauge")
+	fmt.Fprintf(&b, "easyrun_jobs_total %d\n\n", m.JobsTotal)
 
-	// Job instances
-	if len(metrics.JobInstances) > 0 {
-		b.WriteString("# HELP easyrun_job_instances_running Running instances per job\n")
-		b.WriteString("# TYPE easyrun_job_instances_running gauge\n")
-		// Sort for consistent output
-		jobs := make([]string, 0, len(metrics.JobInstances))
-		for job := range metrics.JobInstances {
-			jobs = append(jobs, job)
-		}
-		sort.Strings(jobs)
+	// Job instances (sorted for consistent output)
+	if len(m.JobInstances) > 0 {
+		jobs := sortedKeys(m.JobInstances)
+
+		metric(&b, "easyrun_job_instances_running", "Running instances per job", "gauge")
 		for _, job := range jobs {
-			m := metrics.JobInstances[job]
-			fmt.Fprintf(&b, "easyrun_job_instances_running{job=%q} %d\n", job, m.Running)
+			fmt.Fprintf(&b, "easyrun_job_instances_running{job=%q} %d\n", job, m.JobInstances[job].Running)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_job_instances_expected Expected instances per job\n")
-		b.WriteString("# TYPE easyrun_job_instances_expected gauge\n")
+		metric(&b, "easyrun_job_instances_expected", "Expected instances per job", "gauge")
 		for _, job := range jobs {
-			m := metrics.JobInstances[job]
-			fmt.Fprintf(&b, "easyrun_job_instances_expected{job=%q} %d\n", job, m.Expected)
+			fmt.Fprintf(&b, "easyrun_job_instances_expected{job=%q} %d\n", job, m.JobInstances[job].Expected)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_job_healthy Job is healthy (running >= expected)\n")
-		b.WriteString("# TYPE easyrun_job_healthy gauge\n")
+		metric(&b, "easyrun_job_healthy", "Job is healthy (running >= expected)", "gauge")
 		for _, job := range jobs {
-			m := metrics.JobInstances[job]
 			health := 0
-			if m.Healthy {
+			if m.JobInstances[job].Healthy {
 				health = 1
 			}
 			fmt.Fprintf(&b, "easyrun_job_healthy{job=%q} %d\n", job, health)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_job_cpu_percent Average CPU usage percent per job (relative to allocation)\n")
-		b.WriteString("# TYPE easyrun_job_cpu_percent gauge\n")
+		metric(&b, "easyrun_job_cpu_percent", "Average CPU usage percent per job (relative to allocation)", "gauge")
 		for _, job := range jobs {
-			m := metrics.JobInstances[job]
-			fmt.Fprintf(&b, "easyrun_job_cpu_percent{job=%q} %.1f\n", job, m.CPUPercent)
+			fmt.Fprintf(&b, "easyrun_job_cpu_percent{job=%q} %.1f\n", job, m.JobInstances[job].CPUPercent)
 		}
 		b.WriteString("\n")
 
-		b.WriteString("# HELP easyrun_job_mem_percent Average memory usage percent per job (relative to allocation)\n")
-		b.WriteString("# TYPE easyrun_job_mem_percent gauge\n")
+		metric(&b, "easyrun_job_mem_percent", "Average memory usage percent per job (relative to allocation)", "gauge")
 		for _, job := range jobs {
-			m := metrics.JobInstances[job]
-			fmt.Fprintf(&b, "easyrun_job_mem_percent{job=%q} %.1f\n", job, m.MemPercent)
+			fmt.Fprintf(&b, "easyrun_job_mem_percent{job=%q} %.1f\n", job, m.JobInstances[job].MemPercent)
 		}
 		b.WriteString("\n")
 	}
 
-	// Counters (monotonic)
-	if len(metrics.TaskStartsTotal) > 0 {
-		b.WriteString("# HELP easyrun_task_starts_total Total task starts per job\n")
-		b.WriteString("# TYPE easyrun_task_starts_total counter\n")
-		jobs := make([]string, 0, len(metrics.TaskStartsTotal))
-		for job := range metrics.TaskStartsTotal {
-			jobs = append(jobs, job)
+	// Counters (monotonic) — use shared sorted keys helper
+	writeCounter := func(name, help string, data map[string]int) {
+		if len(data) == 0 {
+			return
 		}
-		sort.Strings(jobs)
-		for _, job := range jobs {
-			count := metrics.TaskStartsTotal[job]
-			fmt.Fprintf(&b, "easyrun_task_starts_total{job=%q} %d\n", job, count)
+		metric(&b, name, help, "counter")
+		for _, job := range sortedKeys(data) {
+			fmt.Fprintf(&b, "%s{job=%q} %d\n", name, job, data[job])
 		}
 		b.WriteString("\n")
 	}
 
-	if len(metrics.TaskFailuresTotal) > 0 {
-		b.WriteString("# HELP easyrun_task_failures_total Total task failures per job\n")
-		b.WriteString("# TYPE easyrun_task_failures_total counter\n")
-		jobs := make([]string, 0, len(metrics.TaskFailuresTotal))
-		for job := range metrics.TaskFailuresTotal {
-			jobs = append(jobs, job)
-		}
-		sort.Strings(jobs)
-		for _, job := range jobs {
-			count := metrics.TaskFailuresTotal[job]
-			fmt.Fprintf(&b, "easyrun_task_failures_total{job=%q} %d\n", job, count)
-		}
-		b.WriteString("\n")
-	}
-
-	if len(metrics.TaskRestartsTotal) > 0 {
-		b.WriteString("# HELP easyrun_task_restarts_total Total task restarts per job\n")
-		b.WriteString("# TYPE easyrun_task_restarts_total counter\n")
-		jobs := make([]string, 0, len(metrics.TaskRestartsTotal))
-		for job := range metrics.TaskRestartsTotal {
-			jobs = append(jobs, job)
-		}
-		sort.Strings(jobs)
-		for _, job := range jobs {
-			count := metrics.TaskRestartsTotal[job]
-			fmt.Fprintf(&b, "easyrun_task_restarts_total{job=%q} %d\n", job, count)
-		}
-		b.WriteString("\n")
-	}
+	writeCounter("easyrun_task_starts_total", "Total task starts per job", m.TaskStartsTotal)
+	writeCounter("easyrun_task_failures_total", "Total task failures per job", m.TaskFailuresTotal)
+	writeCounter("easyrun_task_restarts_total", "Total task restarts per job", m.TaskRestartsTotal)
 
 	w.Write([]byte(b.String()))
 }

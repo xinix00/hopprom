@@ -2,46 +2,7 @@ package collector
 
 import "time"
 
-// API response types matching easyrun
-
-type Agent struct {
-	ID       string    `json:"id"`
-	Endpoint string    `json:"endpoint"`
-	LastSeen time.Time `json:"last_seen"`
-}
-
-type Job struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Command     string            `json:"command"`
-	Count       int               `json:"count"`
-	CPUShares   int               `json:"cpu_shares,omitempty"`
-	MemoryLimit uint64            `json:"memory_limit,omitempty"`
-	Tags        map[string]string `json:"tags,omitempty"`
-}
-
-type Task struct {
-	ID           string    `json:"id"`
-	JobName      string    `json:"job_name"`
-	State        string    `json:"state"` // "running", "failed", "stopped"
-	Pid          int       `json:"pid"`
-	RestartCount int       `json:"restart_count"`
-	StartedAt    time.Time `json:"started_at"`
-	CPUPercent   float64   `json:"cpu_percent"`
-	MemPercent   float64   `json:"mem_percent"`
-}
-
-type StatusResponse struct {
-	Agents      int            `json:"agents"`
-	Jobs        int            `json:"jobs"`
-	TotalPlaced int            `json:"total_placed"`
-	Placed      map[string]int `json:"placed"` // jobName -> count
-}
-
-type JobStatusResponse struct {
-	TasksByAgent map[string][]*Task `json:"tasks_by_agent"`
-}
-
+// CapacityResponse from easyrun agent /capacity endpoint
 type CapacityResponse struct {
 	CPUCores        int    `json:"cpu_cores"`
 	MemoryBytes     uint64 `json:"memory_bytes"`
@@ -52,35 +13,26 @@ type CapacityResponse struct {
 
 // Metrics holds calculated Prometheus metrics
 type Metrics struct {
-	// Agent metrics
 	AgentsTotal        int
 	AgentsHealthy      int
-	AgentLastSeen      map[string]time.Time // agentID -> last_seen
-
-	// Agent capacity
-	AgentCapacity      map[string]*CapacityResponse // agentID -> capacity
-	AgentCPUUsed       map[string]float64           // agentID -> used cores
-	AgentMemoryUsed    map[string]uint64            // agentID -> used bytes
-
-	// Task metrics
-	TasksByState       map[string]int    // state -> count
-	TasksByJob         map[string]int    // jobName -> running count
-	TaskRestartsByJob  map[string]int    // jobName -> total restarts
-
-	// Job metrics
+	AgentLastSeen      map[string]time.Time
+	AgentCapacity      map[string]*CapacityResponse
+	AgentCPUUsed       map[string]float64
+	AgentMemoryUsed    map[string]uint64
+	TasksByState       map[string]int
+	TasksByJob         map[string]int
+	TaskRestartsByJob  map[string]int
 	JobsTotal          int
-	JobInstances       map[string]*JobMetric // jobName -> metrics
-
-	// Counters (stateful)
-	TaskStartsTotal    map[string]int    // jobName -> total starts
-	TaskFailuresTotal  map[string]int    // jobName -> total failures
-	TaskRestartsTotal  map[string]int    // jobName -> total restarts
+	JobInstances       map[string]*JobMetric
+	TaskStartsTotal    map[string]int
+	TaskFailuresTotal  map[string]int
+	TaskRestartsTotal  map[string]int
 }
 
 type JobMetric struct {
 	Running    int
 	Expected   int
 	Healthy    bool
-	CPUPercent float64 // avg CPU% across running tasks
-	MemPercent float64 // avg Mem% across running tasks
+	CPUPercent float64
+	MemPercent float64
 }
