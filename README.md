@@ -1,11 +1,11 @@
-# easyprom - EasyRun Prometheus Metrics Exporter
+# hopprom - Hop Prometheus Metrics Exporter
 
-Prometheus metrics exporter for EasyRun clusters. Polls the local easyrun agent API and exposes cluster metrics in Prometheus format.
+Prometheus metrics exporter for Hop clusters. Polls the local hop agent API and exposes cluster metrics in Prometheus format.
 
 ## Features
 
 - **Stateless** - No persistent storage, all metrics calculated from API
-- **Poll-based** - Query easyrun API every 5 seconds (configurable)
+- **Poll-based** - Query hop API every 5 seconds (configurable)
 - **KISS** - Pure Go stdlib, no dependencies
 - **Counters** - Track task starts, failures, restarts with delta detection
 - **Per-agent metrics** - CPU/memory capacity and usage
@@ -13,18 +13,18 @@ Prometheus metrics exporter for EasyRun clusters. Polls the local easyrun agent 
 ## Installation
 
 ```bash
-cd easyprom
-go build -o ../bin/easyprom ./cmd/easyprom
+cd hopprom
+go build -o ../bin/hopprom ./cmd/hopprom
 ```
 
 ## Usage
 
 ```bash
 # Start with defaults (polls localhost:8080, exposes :9090/metrics)
-./bin/easyprom
+./bin/hopprom
 
 # Custom configuration
-./bin/easyprom \
+./bin/hopprom \
   -listen :9090 \
   -agent http://127.0.0.1:8080 \
   -interval 5s
@@ -35,37 +35,37 @@ go build -o ../bin/easyprom ./cmd/easyprom
 ### Agent Metrics
 
 ```prometheus
-easyrun_agents_total                         # Total registered agents
-easyrun_agents_healthy                       # Healthy agents (seen <60s)
-easyrun_agent_cpu_cores{agent="..."}         # CPU cores per agent
-easyrun_agent_cpu_used_cores{agent="..."}    # Used CPU cores
-easyrun_agent_memory_bytes{agent="..."}      # Total memory
-easyrun_agent_memory_used_bytes{agent="..."} # Used memory
+hop_agents_total                         # Total registered agents
+hop_agents_healthy                       # Healthy agents (seen <60s)
+hop_agent_cpu_cores{agent="..."}         # CPU cores per agent
+hop_agent_cpu_used_cores{agent="..."}    # Used CPU cores
+hop_agent_memory_bytes{agent="..."}      # Total memory
+hop_agent_memory_used_bytes{agent="..."} # Used memory
 ```
 
 ### Task Metrics
 
 ```prometheus
-easyrun_tasks_total{state="running|failed|stopped"}  # Tasks by state
-easyrun_tasks_running{job="..."}                     # Running tasks per job
-easyrun_task_restarts{job="..."}                     # Current restart count
+hop_tasks_total{state="running|failed|stopped"}  # Tasks by state
+hop_tasks_running{job="..."}                     # Running tasks per job
+hop_task_restarts{job="..."}                     # Current restart count
 ```
 
 ### Job Metrics
 
 ```prometheus
-easyrun_jobs_total                           # Total jobs
-easyrun_job_instances_running{job="..."}     # Running instances
-easyrun_job_instances_expected{job="..."}    # Expected instances (count)
-easyrun_job_healthy{job="..."}               # 1 if running >= expected, 0 otherwise
+hop_jobs_total                           # Total jobs
+hop_job_instances_running{job="..."}     # Running instances
+hop_job_instances_expected{job="..."}    # Expected instances (count)
+hop_job_healthy{job="..."}               # 1 if running >= expected, 0 otherwise
 ```
 
 ### Counters (monotonic)
 
 ```prometheus
-easyrun_task_starts_total{job="..."}      # Total task starts detected
-easyrun_task_failures_total{job="..."}    # Total failures (state -> failed)
-easyrun_task_restarts_total{job="..."}    # Total restarts (restartCount increases)
+hop_task_starts_total{job="..."}      # Total task starts detected
+hop_task_failures_total{job="..."}    # Total failures (state -> failed)
+hop_task_restarts_total{job="..."}    # Total restarts (restartCount increases)
 ```
 
 ## Prometheus Configuration
@@ -73,7 +73,7 @@ easyrun_task_restarts_total{job="..."}    # Total restarts (restartCount increas
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'easyrun'
+  - job_name: 'hop'
     scrape_interval: 10s
     static_configs:
       - targets: ['node1:9090', 'node2:9090', 'node3:9090']
@@ -84,11 +84,11 @@ scrape_configs:
 ```yaml
 # alerts.yml
 groups:
-  - name: easyrun
+  - name: hop
     rules:
       # Job degraded - not enough instances running
-      - alert: EasyRunJobDegraded
-        expr: easyrun_job_instances_running < easyrun_job_instances_expected
+      - alert: HopJobDegraded
+        expr: hop_job_instances_running < hop_job_instances_expected
         for: 5m
         labels:
           severity: warning
@@ -96,8 +96,8 @@ groups:
           summary: "Job {{ $labels.job }} is degraded ({{ $value }} / {{ $expected }} instances)"
 
       # Agent down - cluster has too few healthy agents
-      - alert: EasyRunAgentDown
-        expr: easyrun_agents_healthy < 3
+      - alert: HopAgentDown
+        expr: hop_agents_healthy < 3
         for: 2m
         labels:
           severity: critical
@@ -105,8 +105,8 @@ groups:
           summary: "Only {{ $value }} healthy agents (expected 3+)"
 
       # High failure rate
-      - alert: EasyRunHighFailureRate
-        expr: rate(easyrun_task_failures_total[5m]) > 0.1
+      - alert: HopHighFailureRate
+        expr: rate(hop_task_failures_total[5m]) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -114,9 +114,9 @@ groups:
           summary: "Job {{ $labels.job }} has high failure rate ({{ $value }}/s)"
 
       # Agent overutilized
-      - alert: EasyRunAgentCPUHigh
+      - alert: HopAgentCPUHigh
         expr: |
-          (easyrun_agent_cpu_used_cores / easyrun_agent_cpu_cores) > 0.9
+          (hop_agent_cpu_used_cores / hop_agent_cpu_cores) > 0.9
         for: 10m
         labels:
           severity: warning
@@ -124,14 +124,14 @@ groups:
           summary: "Agent {{ $labels.agent }} CPU usage high ({{ $value | humanizePercentage }})"
 ```
 
-## Deploy with EasyRun
+## Deploy with Hop
 
-Run easyprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
+Run hopprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
 
 ```json
 {
-  "name": "easyprom",
-  "command": "/usr/local/bin/easyprom -listen :9090 -agent http://127.0.0.1:8080",
+  "name": "hopprom",
+  "command": "/usr/local/bin/hopprom -listen :9090 -agent http://127.0.0.1:8080",
   "count": 1,
   "ports": {"metrics": 9090},
   "tags": {
@@ -140,13 +140,13 @@ Run easyprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
 }
 ```
 
-**Why count=1?** Agent proxies `/v1/*` requests to leader, so one instance gets cluster-wide data. If node fails, easyrun reschedules automatically.
+**Why count=1?** Agent proxies `/v1/*` requests to leader, so one instance gets cluster-wide data. If node fails, hop reschedules automatically.
 
 ## Architecture
 
 ```
 ┌─────────────┐
-│  easyrun    │ :8080
+│  hop    │ :8080
 │  (agent)    │
 └──────┬──────┘
        │ poll every 5s
@@ -156,7 +156,7 @@ Run easyprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
        │ GET /capacity (per agent)
        ↓
 ┌──────────────┐
-│  easyprom    │ :9090
+│  hopprom    │ :9090
 │              │
 └──────┬───────┘
        │ scrape every 10s
@@ -170,29 +170,29 @@ Run easyprom with `count: 1` (agent proxies cluster-wide endpoints to leader):
 ## Design
 
 - **Stateless**: Counters are recalculated on every scrape by tracking state transitions
-- **Poll-based**: Same pattern as easydns and easylb (KISS)
-- **No persistence**: If easyprom restarts, counters reset (acceptable for monitoring)
-- **Per-node**: Each agent runs its own easyprom instance
+- **Poll-based**: Same pattern as hopdns and hoplb (KISS)
+- **No persistence**: If hopprom restarts, counters reset (acceptable for monitoring)
+- **Per-node**: Each agent runs its own hopprom instance
 - **Prometheus scrapes all**: Aggregate metrics across cluster in PromQL
 
 ## Example Queries
 
 ```promql
 # Total tasks across cluster
-sum(easyrun_tasks_total)
+sum(hop_tasks_total)
 
 # Job health by instance
-easyrun_job_healthy == 0
+hop_job_healthy == 0
 
 # Failure rate per job (5min)
-rate(easyrun_task_failures_total[5m])
+rate(hop_task_failures_total[5m])
 
 # Average restarts per job
-avg(easyrun_task_restarts) by (job)
+avg(hop_task_restarts) by (job)
 
 # Cluster CPU utilization
-sum(easyrun_agent_cpu_used_cores) / sum(easyrun_agent_cpu_cores)
+sum(hop_agent_cpu_used_cores) / sum(hop_agent_cpu_cores)
 
 # Memory pressure per agent
-(easyrun_agent_memory_used_bytes / easyrun_agent_memory_bytes) * 100
+(hop_agent_memory_used_bytes / hop_agent_memory_bytes) * 100
 ```

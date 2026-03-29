@@ -2,7 +2,7 @@ package collector
 
 import "time"
 
-// CapacityResponse from easyrun agent /capacity endpoint
+// CapacityResponse from hop agent /capacity endpoint
 type CapacityResponse struct {
 	CPUCores        int    `json:"cpu_cores"`
 	MemoryBytes     uint64 `json:"memory_bytes"`

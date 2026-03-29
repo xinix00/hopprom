@@ -6,15 +6,15 @@ import (
 	"sync"
 	"time"
 
-	"easylib"
+	"hoplib"
 )
 
 const agentHealthyThreshold = 60 * time.Second
 
-// Collector polls easyrun API and calculates metrics
+// Collector polls hop API and calculates metrics
 type Collector struct {
 	agentURL string
-	client   *easylib.Client
+	client   *hoplib.Client
 
 	mu             sync.RWMutex
 	metrics        *Metrics
@@ -25,7 +25,7 @@ type Collector struct {
 func New(agentURL string, apiKey string) *Collector {
 	return &Collector{
 		agentURL:       agentURL,
-		client:         easylib.NewClient(apiKey),
+		client:         hoplib.NewClient(apiKey),
 		lastTaskStates: make(map[string]string),
 		metrics: &Metrics{
 			TasksByState:      make(map[string]int),
@@ -43,14 +43,14 @@ func New(agentURL string, apiKey string) *Collector {
 	}
 }
 
-// Collect fetches data from easyrun and calculates metrics
+// Collect fetches data from hop and calculates metrics
 func (c *Collector) Collect() error {
-	agents, err := easylib.Fetch[[]*easylib.Agent](c.client, c.agentURL+"/v1/agents")
+	agents, err := hoplib.Fetch[[]*hoplib.Agent](c.client, c.agentURL+"/v1/agents")
 	if err != nil {
 		return fmt.Errorf("failed to fetch agents: %w", err)
 	}
 
-	jobs, err := easylib.Fetch[[]*easylib.Job](c.client, c.agentURL+"/v1/jobs")
+	jobs, err := hoplib.Fetch[[]*hoplib.Job](c.client, c.agentURL+"/v1/jobs")
 	if err != nil {
 		return fmt.Errorf("failed to fetch jobs: %w", err)
 	}
@@ -103,7 +103,7 @@ func (c *Collector) GetMetrics() *Metrics {
 	return m
 }
 
-func (c *Collector) calculateMetrics(agents []*easylib.Agent, jobs []*easylib.Job, tasksByAgent map[string][]*easylib.Task) {
+func (c *Collector) calculateMetrics(agents []*hoplib.Agent, jobs []*hoplib.Job, tasksByAgent map[string][]*hoplib.Task) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -191,21 +191,21 @@ func (c *Collector) calculateMetrics(agents []*easylib.Agent, jobs []*easylib.Jo
 }
 
 // fetchAllJobTasks fetches task details for each job in parallel via per-job status.
-func (c *Collector) fetchAllJobTasks(jobs []*easylib.Job) map[string][]*easylib.Task {
-	result := make(map[string][]*easylib.Task)
+func (c *Collector) fetchAllJobTasks(jobs []*hoplib.Job) map[string][]*hoplib.Task {
+	result := make(map[string][]*hoplib.Task)
 	if len(jobs) == 0 {
 		return result
 	}
 
 	type jobResult struct {
-		tasks map[string][]*easylib.Task
+		tasks map[string][]*hoplib.Task
 	}
 	ch := make(chan jobResult, len(jobs))
 
 	for _, job := range jobs {
-		go func(j *easylib.Job) {
-			status, err := easylib.Fetch[struct {
-				TasksByAgent map[string][]*easylib.Task `json:"tasks_by_agent"`
+		go func(j *hoplib.Job) {
+			status, err := hoplib.Fetch[struct {
+				TasksByAgent map[string][]*hoplib.Task `json:"tasks_by_agent"`
 			}](c.client, fmt.Sprintf("%s/v1/jobs/%s/status", c.agentURL, j.Name))
 			if err != nil {
 				log.Printf("Failed to fetch status for job %s: %v", j.Name, err)
@@ -226,7 +226,7 @@ func (c *Collector) fetchAllJobTasks(jobs []*easylib.Job) map[string][]*easylib.
 	return result
 }
 
-func (c *Collector) fetchAgentCapacities(agents []*easylib.Agent) {
+func (c *Collector) fetchAgentCapacities(agents []*hoplib.Agent) {
 	type result struct {
 		id  string
 		cap *CapacityResponse
@@ -234,8 +234,8 @@ func (c *Collector) fetchAgentCapacities(agents []*easylib.Agent) {
 	ch := make(chan result, len(agents))
 
 	for _, agent := range agents {
-		go func(a *easylib.Agent) {
-			cap, err := easylib.Fetch[CapacityResponse](c.client, a.Endpoint+"/capacity")
+		go func(a *hoplib.Agent) {
+			cap, err := hoplib.Fetch[CapacityResponse](c.client, a.Endpoint+"/capacity")
 			if err != nil {
 				log.Printf("Failed to fetch capacity for %s: %v", a.ID, err)
 				ch <- result{a.ID, nil}
