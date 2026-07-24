@@ -30,7 +30,7 @@ type Metrics struct {
 }
 
 type JobMetric struct {
-	Running    int
+	Placed     int
 	Expected   int
 	Healthy    bool
 	CPUPercent float64

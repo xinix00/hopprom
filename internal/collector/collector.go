@@ -93,7 +93,7 @@ func (c *Collector) GetMetrics() *Metrics {
 	}
 	for k, v := range c.metrics.JobInstances {
 		m.JobInstances[k] = &JobMetric{
-			Running:    v.Running,
+			Placed:     v.Placed,
 			Expected:   v.Expected,
 			Healthy:    v.Healthy,
 			CPUPercent: v.CPUPercent,
@@ -166,7 +166,7 @@ func (c *Collector) calculateMetrics(agents []*hoplib.Agent, jobs []*hoplib.Job,
 
 	c.metrics.JobsTotal = len(jobs)
 	for _, job := range jobs {
-		running := c.metrics.TasksByJob[job.Name]
+		placed := c.metrics.TasksByJob[job.Name]
 		expected := job.Count
 		if expected == -1 {
 			expected = len(agents)
@@ -181,9 +181,9 @@ func (c *Collector) calculateMetrics(agents []*hoplib.Agent, jobs []*hoplib.Job,
 		}
 
 		c.metrics.JobInstances[job.Name] = &JobMetric{
-			Running:    running,
+			Placed:     placed,
 			Expected:   expected,
-			Healthy:    running >= expected,
+			Healthy:    placed >= expected,
 			CPUPercent: avgCPU,
 			MemPercent: avgMem,
 		}

@@ -46,8 +46,8 @@ hop_agent_memory_used_bytes{agent="..."} # Used memory
 ### Task Metrics
 
 ```prometheus
-hop_tasks_total{state="running|failed|stopped"}  # Tasks by state
-hop_tasks_running{job="..."}                     # Running tasks per job
+hop_tasks_total{state="running|failed|stopped"}  # Tasks by NODE state (node owns liveness)
+hop_tasks_placed{job="..."}                      # Placed tasks per job (cluster knows placement, not liveness)
 hop_task_restarts{job="..."}                     # Current restart count
 ```
 
@@ -55,9 +55,9 @@ hop_task_restarts{job="..."}                     # Current restart count
 
 ```prometheus
 hop_jobs_total                           # Total jobs
-hop_job_instances_running{job="..."}     # Running instances
+hop_job_instances_placed{job="..."}      # Placed instances
 hop_job_instances_expected{job="..."}    # Expected instances (count)
-hop_job_healthy{job="..."}               # 1 if running >= expected, 0 otherwise
+hop_job_healthy{job="..."}               # 1 if placed >= expected, 0 otherwise
 ```
 
 ### Counters (monotonic)
@@ -88,7 +88,7 @@ groups:
     rules:
       # Job degraded - not enough instances running
       - alert: HopJobDegraded
-        expr: hop_job_instances_running < hop_job_instances_expected
+        expr: hop_job_instances_placed < hop_job_instances_expected
         for: 5m
         labels:
           severity: warning

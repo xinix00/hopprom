@@ -84,11 +84,13 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString("\n")
 
-	// Task metrics by job
+	// Task metrics by job. "placed", not "running": the cluster knows a task
+	// was placed and the node reports it started — real liveness is the node's
+	// (and the health check's) business, not something the cluster asserts.
 	if len(m.TasksByJob) > 0 {
-		metric(&b, "hop_tasks_running", "Number of running tasks per job", "gauge")
+		metric(&b, "hop_tasks_placed", "Placed tasks per job", "gauge")
 		for job, count := range m.TasksByJob {
-			fmt.Fprintf(&b, "hop_tasks_running{job=%q} %d\n", job, count)
+			fmt.Fprintf(&b, "hop_tasks_placed{job=%q} %d\n", job, count)
 		}
 		b.WriteString("\n")
 	}
@@ -110,9 +112,9 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(m.JobInstances) > 0 {
 		jobs := sortedKeys(m.JobInstances)
 
-		metric(&b, "hop_job_instances_running", "Running instances per job", "gauge")
+		metric(&b, "hop_job_instances_placed", "Placed instances per job", "gauge")
 		for _, job := range jobs {
-			fmt.Fprintf(&b, "hop_job_instances_running{job=%q} %d\n", job, m.JobInstances[job].Running)
+			fmt.Fprintf(&b, "hop_job_instances_placed{job=%q} %d\n", job, m.JobInstances[job].Placed)
 		}
 		b.WriteString("\n")
 
@@ -122,7 +124,7 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString("\n")
 
-		metric(&b, "hop_job_healthy", "Job is healthy (running >= expected)", "gauge")
+		metric(&b, "hop_job_healthy", "Job is healthy (placed >= expected)", "gauge")
 		for _, job := range jobs {
 			health := 0
 			if m.JobInstances[job].Healthy {
