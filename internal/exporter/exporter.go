@@ -163,5 +163,5 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeCounter("hop_task_failures_total", "Total task failures per job", m.TaskFailuresTotal)
 	writeCounter("hop_task_restarts_total", "Total task restarts per job", m.TaskRestartsTotal)
 
-	w.Write([]byte(b.String()))
+	_, _ = w.Write([]byte(b.String()))
 }
