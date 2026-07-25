@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"hoplib"
+	"github.com/xinix00/hoplib"
 )
 
 const agentHealthyThreshold = 60 * time.Second
