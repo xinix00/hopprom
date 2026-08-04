@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"hopprom/internal/collector"
+	"github.com/xinix00/hopprom/internal/collector"
 )
 
 // Exporter exposes metrics in Prometheus format

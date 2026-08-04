@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"hopprom/internal/collector"
-	"hopprom/internal/exporter"
+	"github.com/xinix00/hopprom/internal/collector"
+	"github.com/xinix00/hopprom/internal/exporter"
 )
 
 const (

@@ -1,4 +1,4 @@
-module hopprom
+module github.com/xinix00/hopprom
 
 go 1.26.4
 
@@ -15,13 +15,8 @@ require (
 )
 
 // Alleen voor cmd/hopprom-hopos (tamago-only, zie de build tags daar): het
-// HopOS-app-skelet. Replaces gelden niet transitief, dus hop-os/metal's eigen
-// `replace hop => …` staat hier herhaald. Lokale paden — net als hop-os-surf
-// bouwt dit alleen op een werkplek met de sibling-checkouts; de host-builds
-// (cmd/hopprom, ./...) raken deze modules dankzij module-pruning nooit aan.
-require hop-os/metal v1.5.5
-
-replace (
-	hop => ../hop
-	hop-os/metal => ../../hop-os/metal
-)
+// HopOS-app-skelet — een echte GitHub-dep (metal/vX.Y.Z-tag in de
+// HopOS-repo), dus geen lokale replaces meer nodig; sibling-dev loopt
+// via go.work. Host-builds raken deze module dankzij module-pruning
+// nooit aan.
+require github.com/xinix00/HopOS/metal v1.8.3
