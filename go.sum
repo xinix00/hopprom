@@ -1,7 +1,7 @@
 github.com/usbarmory/tamago v1.26.4 h1:laFvRANKgVYFHxLHjIlhqJCc3Xm+qMyab2SlUoNw6zY=
 github.com/usbarmory/tamago v1.26.4/go.mod h1:HZkb+ZkzFl8aCxAuF7exsKX+XaNM0mYG9Iv7ooX1WDY=
-github.com/xinix00/HopOS/metal v1.13.0 h1:nvS22ghh8JwUPZmk1zsdHlazv/ToErONDKiyAlM5t3U=
-github.com/xinix00/HopOS/metal v1.13.0/go.mod h1:0J/cdRaQMvs1gWkS9Ed3ITLZy3UDcmKYW5rLezyKOoU=
+github.com/xinix00/HopOS/metal v1.14.0 h1:1yI6NSPnN9dDy7Vm84KZTqVSNIBU3rmOuuzHjikEMMA=
+github.com/xinix00/HopOS/metal v1.14.0/go.mod h1:6vpHmHLSmfFz2ucomAWzntq693XnxGYHUNQScUC27qc=
 github.com/xinix00/hoplib v0.1.0 h1:iXpM1g+4Egp3FY4bk7gVKGmcGHX6kzNsRqRZNwW7Abw=
 github.com/xinix00/hoplib v0.1.0/go.mod h1:qpRYSsWr5FZOoTnDxOFjkLJt+5GVYwYYz6G0zPMTMms=
 github.com/xinix00/lean v0.4.0 h1:Ux36j+tGu9ztD+DIImjM6AzLUIpA9dq7xa7/Z+2f6Og=
