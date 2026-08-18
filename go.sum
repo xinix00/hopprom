@@ -1,8 +1,8 @@
 github.com/usbarmory/tamago v1.26.4 h1:laFvRANKgVYFHxLHjIlhqJCc3Xm+qMyab2SlUoNw6zY=
 github.com/usbarmory/tamago v1.26.4/go.mod h1:HZkb+ZkzFl8aCxAuF7exsKX+XaNM0mYG9Iv7ooX1WDY=
-github.com/xinix00/HopOS/metal v1.19.1 h1:Bsieth22UZc/3bZdl/j3ZzSZb9A+DNXJlpRcDxtz5GM=
-github.com/xinix00/HopOS/metal v1.19.1/go.mod h1:RqCHzZIFU8v+Kin7WkpcU7VKWbuEaPl/x9qaJQxQAqQ=
+github.com/xinix00/HopOS/metal v1.20.0 h1:4TyFSH8AxYeS1WmpKtF0DTev6927R4qI1lnQ0mPtJnI=
+github.com/xinix00/HopOS/metal v1.20.0/go.mod h1:IdkRi2Km3c+xByvPBGIsCtrLYHrpWj7ImrQfcv9cCMU=
 github.com/xinix00/hoplib v0.1.0 h1:iXpM1g+4Egp3FY4bk7gVKGmcGHX6kzNsRqRZNwW7Abw=
 github.com/xinix00/hoplib v0.1.0/go.mod h1:qpRYSsWr5FZOoTnDxOFjkLJt+5GVYwYYz6G0zPMTMms=
-github.com/xinix00/lean v0.8.0 h1:DkcZ8+LovddZf5O9exkvelLeE8Qrt0Q5jx0WQRCK880=
-github.com/xinix00/lean v0.8.0/go.mod h1:gRIa2nL/SIEsi1L/eq9EUqrKQ+jnjxUGb3IAsuVQX7U=
+github.com/xinix00/lean v0.8.1 h1:ezDm7b7d0nyekEyaByM6RYBdW7u8uXgimSnYbZYeJiQ=
+github.com/xinix00/lean v0.8.1/go.mod h1:gRIa2nL/SIEsi1L/eq9EUqrKQ+jnjxUGb3IAsuVQX7U=
