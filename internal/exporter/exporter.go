@@ -5,17 +5,24 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/xinix00/hopprom/internal/collector"
 )
 
 // Exporter exposes metrics in Prometheus format
 type Exporter struct {
-	collector *collector.Collector
+	collector MetricsSource
 }
 
 // New creates a new Prometheus exporter
-func New(c *collector.Collector) *Exporter {
+// MetricsSource is what the exporter renders: the collector, or a fixed
+// set in tests.
+type MetricsSource interface {
+	GetMetrics() *collector.Metrics
+}
+
+func New(c MetricsSource) *Exporter {
 	return &Exporter{
 		collector: c,
 	}
@@ -163,5 +170,38 @@ func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeCounter("hop_task_failures_total", "Total task failures per job", m.TaskFailuresTotal)
 	writeCounter("hop_task_restarts_total", "Total task restarts per job", m.TaskRestartsTotal)
 
+	// Leader and lease — the cluster's heartbeat as seen from this node.
+	metric(&b, "hop_leader_info", "Current leader address as a label (1 = a leader is known)", "gauge")
+	if m.Leader != "" {
+		fmt.Fprintf(&b, "hop_leader_info{leader=%q} 1\n\n", m.Leader)
+	} else {
+		b.WriteString("hop_leader_info{leader=\"\"} 0\n\n")
+	}
+	metric(&b, "hop_leader_lease_seconds", "Seconds until the local leader's lease lapses unless renewed (0 when this node does not lead)", "gauge")
+	lease := 0.0
+	if !m.LeaseExpiresAt.IsZero() {
+		if d := time.Until(m.LeaseExpiresAt).Seconds(); d > 0 {
+			lease = d
+		}
+	}
+	fmt.Fprintf(&b, "hop_leader_lease_seconds %.1f\n\n", lease)
+	metric(&b, "hop_leader_changes_total", "Leader switches observed since hopprom started", "counter")
+	fmt.Fprintf(&b, "hop_leader_changes_total %d\n\n", m.LeaderChanges)
+	metric(&b, "hop_cluster_settling", "1 while a new leader waits before its first reconcile", "gauge")
+	fmt.Fprintf(&b, "hop_cluster_settling %d\n\n", boolInt(m.Settling))
+	metric(&b, "hop_jobs_deploying", "Jobs whose last rollout did not finish", "gauge")
+	fmt.Fprintf(&b, "hop_jobs_deploying %d\n", len(m.JobsDeploying))
+	for _, job := range m.JobsDeploying {
+		fmt.Fprintf(&b, "hop_job_deploying{job=%q} 1\n", job)
+	}
+	b.WriteString("\n")
+
 	_, _ = w.Write([]byte(b.String()))
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

@@ -58,7 +58,41 @@ func (c *Collector) Collect() error {
 	tasksByAgent := c.fetchAllJobTasks(jobs)
 	c.fetchAgentCapacities(agents)
 	c.calculateMetrics(agents, jobs, tasksByAgent)
+	c.collectLeader()
 	return nil
+}
+
+// collectLeader reads the local agent's /leader (address, and the lease
+// expiry when this agent leads) and /v1/status (deploying, settling). Both
+// are best-effort: a miss keeps the previous values.
+func (c *Collector) collectLeader() {
+	lead, err := hoplib.Fetch[struct {
+		Leader         string    `json:"leader"`
+		LeaseExpiresAt time.Time `json:"lease_expires_at"`
+	}](c.client, c.agentURL+"/leader")
+	if err != nil {
+		log.Printf("leader: %v", err)
+		return
+	}
+	status, err := hoplib.Fetch[struct {
+		Deploying []string `json:"deploying"`
+		Settling  bool     `json:"settling"`
+	}](c.client, c.agentURL+"/v1/status")
+	if err != nil {
+		log.Printf("status: %v", err)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if lead.Leader != c.metrics.Leader && c.metrics.Leader != "" {
+		c.metrics.LeaderChanges++
+	}
+	c.metrics.Leader = lead.Leader
+	c.metrics.LeaseExpiresAt = lead.LeaseExpiresAt
+	if err == nil {
+		c.metrics.JobsDeploying = status.Deploying
+		c.metrics.Settling = status.Settling
+	}
 }
 
 // copyMap copies a map
@@ -90,6 +124,11 @@ func (c *Collector) GetMetrics() *Metrics {
 		AgentCPUUsed:      copyMap(c.metrics.AgentCPUUsed),
 		AgentMemoryUsed:   copyMap(c.metrics.AgentMemoryUsed),
 		JobInstances:      make(map[string]*JobMetric, len(c.metrics.JobInstances)),
+		Leader:            c.metrics.Leader,
+		LeaseExpiresAt:    c.metrics.LeaseExpiresAt,
+		LeaderChanges:     c.metrics.LeaderChanges,
+		JobsDeploying:     append([]string(nil), c.metrics.JobsDeploying...),
+		Settling:          c.metrics.Settling,
 	}
 	for k, v := range c.metrics.JobInstances {
 		m.JobInstances[k] = &JobMetric{
